@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import math
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, roc_auc_score, classification_report, confusion_matrix
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 
 from tkinter import *
 
@@ -39,7 +39,7 @@ names = FullDataset.iloc[::,60:82].values
 
 X = FullDataset.iloc[::,60:82].values[:len(FullDataset)-28]
 np.set_printoptions(linewidth=120)  # default 75
-print(X)
+print(FullDataset.columns.values[60:82])
 #X = StandardScaler().fit_transform(X)
 
 y = FullDataset.iloc[::,10].values[:len(FullDataset)-28]
@@ -101,8 +101,8 @@ print('R3', r3)
 
 
 
-#plt.scatter(X_pca[:,0],X_pca[:,1],c=y)
-#plt.show()
+plt.scatter(X_pca[:,0],X_pca[:,1],c=y)
+plt.show()
 
 imprtnc = classifier.feature_importances_
 fig,ax= plt.subplots()
@@ -111,9 +111,9 @@ ind = np.arange(len(imprtnc))
 ax.barh(ind,imprtnc,width,color='green')
 ax.set_yticks(ind+width/10)
 ax.set_yticklabels(FullDataset.columns.values[60:82],minor=False)
-plt.title('Feature importance, random forest')
-plt.xlabel('Relative Importance')
-plt.ylabel('feature')
+plt.title('Значимость характеристик')
+plt.xlabel('Значимость')
+plt.ylabel('Хар-ка')
 plt.figure(figsize=(5,5))
 fig.set_size_inches(6.5,4.5,forward=True)
 plt.show()
