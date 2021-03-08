@@ -5,8 +5,8 @@ from PyQt5.QtWidgets import QLabel
 from PyQt5.QtWidgets import QMainWindow
 from PyQt5.QtWidgets import QStatusBar
 from PyQt5.QtWidgets import QToolBar, QVBoxLayout, QPushButton
-from PyQt5.QtWidgets import QTableView, QGridLayout
-from PyQt5.QtCore import QSize, Qt
+from PyQt5.QtWidgets import QTableView, QGridLayout,QStyledItemDelegate
+from PyQt5.QtCore import QSize, Qt, QVariant
 from PyQt5 import QtGui
 from functools import partial
 
@@ -26,21 +26,43 @@ data = {'col1':['1','2','3','4'],
         'col3':['1','1','2','1']}
 
 
-class Model:
+class ColorDelegate(QStyledItemDelegate):
+    def initStyleOption(self, option, index):
+        super().initStyleOption(option, index)
+        option.backgroundBrush = QtGui.QColor("red")
+
+class Model(QtGui.QStandardItemModel):
     def __init__(self):
+        QtGui.QStandardItemModel.__init__(self)
+
         self.data = None
         self.clasiffier = None
+        self.column_names = None
+        self.patient_info = None
     
     def get_data(self):
         return self.data
     
     def get_classifier(self):
         return self.clasiffier
+    
+    def read_importfile(self,filename):
+        FullDataset = pd.read_csv(filename)
+
+        X = FullDataset.iloc[::,60:82].values
+        y = FullDataset.iloc[::,10].values
+
+        self.data  = X
+        classifier = self.classsifier 
+        test = classifier.predict(self.data)
+        importances = classifier.feature_importances_
+        print(test)
+        
 
     def read_dbfile(self, filename):
         FullDataset = pd.read_csv(filename)
 
-        names = FullDataset.iloc[::,60:82].values
+        self.column_names = FullDataset.columns.values[60:82]
 
         X = FullDataset.iloc[::,60:82].values[:len(FullDataset)-28]
         np.set_printoptions(linewidth=120)  # default 75
@@ -58,13 +80,13 @@ class Model:
                 X=np.delete(X,(index),axis=0)
                 y= np.delete(y,(index),axis=0)
 
-        New_X = FullDataset.iloc[::,60:82].values[len(FullDataset)-28:len(FullDataset)-27]
-        X_train, X_test,y_train,y_test = train_test_split(X,y,test_size=0.2)
+        #New_X = FullDataset.iloc[::,60:82].values[len(FullDataset)-28:len(FullDataset)-27]
+        #X_train, X_test,y_train,y_test = train_test_split(X,y,test_size=0.2)
 
-        self.data = X_train
+        self.data = X
 
-        classifier = RandomForestClassifier(n_estimators = 10)
-        self.classsifier = classifier.fit(X_train, y_train)
+        classifier = RandomForestRegressor(n_estimators = 10)
+        self.classsifier = classifier.fit(X, y)
 
 
 class Controller:
@@ -75,25 +97,35 @@ class Controller:
 
     def _filltable(self,data):
         
+        self._view.model.clear()
+
         for row in data:    
             items = [
                 QtGui.QStandardItem(str(field))
                 for field in row
             ]
             self._view.model.appendRow(items)
+        self._view.model.setHorizontalHeaderLabels(list(self._model.column_names))
         self._view.table.setModel(self._view.model)
+        delegate = ColorDelegate(self._view.table)
+        self._view.table.setItemDelegateForColumn(3,delegate)
         self._view.table.show()
+        
         
         
     def _importDb(self,filename):
         self._model.read_dbfile(filename)
         print(self._model.data)
         self._filltable(self._model.data)
+
+    def _importFile(self,filename):
+        self._model.read_importfile(filename)
+        print(self._model.data)
+        self._filltable(self._model.data)
         
 
     def _connectSignals(self):
-        #self._view.importFileBtn.clicked.connect(partial(self._filltable,self._view.importFileBtn.text()))
-        self._view.importFileBtn.clicked.connect(partial(self._filltable,self._view.importFileBtn.text()))
+        self._view.importFileBtn.clicked.connect(partial(self._importFile,"To_test.csv"))
         self._view.importDbBtn.clicked.connect(partial(self._importDb,"File2_filtered.csv"))
 
 
@@ -103,7 +135,8 @@ class Window(QMainWindow):
         
         QMainWindow.__init__(self)
 
-        self.setMinimumSize(QSize(480, 80))
+        self.setMinimumSize(QSize(480, 240
+        ))
         self.model = QtGui.QStandardItemModel(self)
         self.setWindowTitle("Работа с QTableWidget")    
         central_widget = QWidget(self)                  
@@ -121,6 +154,7 @@ class Window(QMainWindow):
 
         self.importFileBtn = QPushButton('Импортировать файл ')
         self.importDbBtn = QPushButton('Импорт базы')
+        
         grid_layout.addWidget(self.importFileBtn, 0, 0)
         grid_layout.addWidget(self.table, 0, 1)   
         grid_layout.addWidget( self.importDbBtn,1, 1)
