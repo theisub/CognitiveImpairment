@@ -29,6 +29,7 @@ data = {'col1':['1','2','3','4'],
 class ColorDelegate(QStyledItemDelegate):
     def initStyleOption(self, option, index):
         super().initStyleOption(option, index)
+        print(index.column())
         option.backgroundBrush = QtGui.QColor("red")
 
 class Model(QtGui.QStandardItemModel):
@@ -39,6 +40,7 @@ class Model(QtGui.QStandardItemModel):
         self.clasiffier = None
         self.column_names = None
         self.patient_info = None
+        self.importances = None
     
     def get_data(self):
         return self.data
@@ -55,7 +57,7 @@ class Model(QtGui.QStandardItemModel):
         self.data  = X
         classifier = self.classsifier 
         test = classifier.predict(self.data)
-        importances = classifier.feature_importances_
+        self.importances = classifier.feature_importances_
         print(test)
         
 
@@ -99,16 +101,38 @@ class Controller:
         
         self._view.model.clear()
 
-        for row in data:    
+        for row in data:
+            column=0    
             items = [
                 QtGui.QStandardItem(str(field))
                 for field in row
             ]
+            if self._model.importances is not None:
+                for item in items:
+                    if self._model.importances[column] / max(self._model.importances) > 0.80:
+                        item.setForeground(QtGui.QBrush(QtGui.QColor(255, 0, 0)))
+                    elif self._model.importances[column] / max(self._model.importances) > 0.40:
+                        item.setForeground(QtGui.QBrush(QtGui.QColor(255, 140, 0)))
+                    elif self._model.importances[column] / max(self._model.importances) > 0.20:
+                        item.setForeground(QtGui.QBrush(QtGui.QColor(0, 255, 0)))
+                    else:
+                        item.setForeground(QtGui.QBrush(QtGui.QColor(0, 0, 0)))
+                    column = column +1
+
+
+
+
+
+
             self._view.model.appendRow(items)
         self._view.model.setHorizontalHeaderLabels(list(self._model.column_names))
         self._view.table.setModel(self._view.model)
         delegate = ColorDelegate(self._view.table)
-        self._view.table.setItemDelegateForColumn(3,delegate)
+
+        #for column in range(0,self._view.model.columnCount()):
+        #    self._view.table.setItemDelegateForColumn(column,delegate,o)
+        self._model.setData(self._model.index(2,2),QVariant(QtGui.QBrush(QtGui.QColor(218, 94, 242))))
+
         self._view.table.show()
         
         
@@ -135,8 +159,7 @@ class Window(QMainWindow):
         
         QMainWindow.__init__(self)
 
-        self.setMinimumSize(QSize(480, 240
-        ))
+        self.setMinimumSize(QSize(480, 240))
         self.model = QtGui.QStandardItemModel(self)
         self.setWindowTitle("Работа с QTableWidget")    
         central_widget = QWidget(self)                  
