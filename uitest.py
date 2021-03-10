@@ -9,6 +9,7 @@ from PyQt5.QtWidgets import QTableView, QGridLayout,QStyledItemDelegate, QFileDi
 from PyQt5.QtCore import QSize, Qt, QVariant
 from PyQt5 import QtGui
 from functools import partial
+import mplcursors
 
 import numpy as np
 import pandas as pd
@@ -41,6 +42,7 @@ class Model(QtGui.QStandardItemModel):
         self.column_names = None
         self.patient_info = None
         self.importances = None
+        self.prediction_array = None
     
     def get_data(self):
         return self.data
@@ -56,9 +58,9 @@ class Model(QtGui.QStandardItemModel):
 
         self.data  = X
         classifier = self.classsifier 
-        test = classifier.predict(self.data)
+        self.prediction_array = classifier.predict(self.data)
         self.importances = classifier.feature_importances_
-        print(test)
+        print(self.prediction_array)
         
 
     def read_dbfile(self, filename):
@@ -66,12 +68,12 @@ class Model(QtGui.QStandardItemModel):
 
         self.column_names = FullDataset.columns.values[60:82]
 
-        X = FullDataset.iloc[::,60:82].values[:len(FullDataset)-28]
+        X = FullDataset.iloc[::,60:82].values
         np.set_printoptions(linewidth=120)  # default 75
         print(FullDataset.columns.values[60:82])
         #X = StandardScaler().fit_transform(X)
 
-        y = FullDataset.iloc[::,10].values[:len(FullDataset)-28]
+        y = FullDataset.iloc[::,10].values
 
         print(len(X))
         print(len(y))
@@ -145,6 +147,7 @@ class Controller:
         print(self._model.data)
         self._filltable(self._model.data)
 
+    
     def _importFile(self,filename):
         fname = QFileDialog.getOpenFileName(None, 'Open file', 
          '',"Csv files (*.csv)")
@@ -153,11 +156,22 @@ class Controller:
         ])
         print(self._model.data)
         self._filltable(self._model.data)
+    def _plotGraph(self):
+        if self._model.prediction_array is not None:
+            plt.plot(self._model.prediction_array,marker='o')
+            plt.xlabel('Номер визита',fontsize=10)
+            plt.ylabel('Оценка диагноза 0 - норма, 1-лкн, 2-скн',fontsize=10)
+            mplcursors.cursor(hover=True)
+            plt.ylim(0,2)
+            plt.show()
+
         
 
     def _connectSignals(self):
         self._view.importFileBtn.clicked.connect(partial(self._importFile,"To_test.csv"))
         self._view.importDbBtn.clicked.connect(partial(self._importDb,"File2_filtered.csv"))
+        self._view.plotBtn.clicked.connect(self._plotGraph)
+
 
 
 class Window(QMainWindow):
@@ -184,10 +198,14 @@ class Window(QMainWindow):
 
         self.importFileBtn = QPushButton('Импортировать файл ')
         self.importDbBtn = QPushButton('Импорт базы')
+        self.plotBtn = QPushButton('Отобразить график стадий')
+
         
         grid_layout.addWidget(self.importFileBtn, 0, 0)
         grid_layout.addWidget(self.table, 0, 1)   
-        grid_layout.addWidget( self.importDbBtn,1, 1)
+        grid_layout.addWidget(self.importDbBtn,1, 1)
+        grid_layout.addWidget(self.plotBtn,2,1)   
+
 
 
 if __name__ == '__main__':
