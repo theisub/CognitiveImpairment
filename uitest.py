@@ -5,7 +5,7 @@ from PyQt5.QtWidgets import QLabel
 from PyQt5.QtWidgets import QMainWindow
 from PyQt5.QtWidgets import QStatusBar
 from PyQt5.QtWidgets import QToolBar, QVBoxLayout, QPushButton
-from PyQt5.QtWidgets import QTableView, QGridLayout,QStyledItemDelegate
+from PyQt5.QtWidgets import QTableView, QGridLayout,QStyledItemDelegate, QFileDialog
 from PyQt5.QtCore import QSize, Qt, QVariant
 from PyQt5 import QtGui
 from functools import partial
@@ -138,12 +138,19 @@ class Controller:
         
         
     def _importDb(self,filename):
+        #fname = QFileDialog.getOpenFileName(None, 'Open file', 
+        # '',"Csv files (*.csv)")
+        #print(fname[0])
         self._model.read_dbfile(filename)
         print(self._model.data)
         self._filltable(self._model.data)
 
     def _importFile(self,filename):
-        self._model.read_importfile(filename)
+        fname = QFileDialog.getOpenFileName(None, 'Open file', 
+         '',"Csv files (*.csv)")
+        print(fname[0])
+        self._model.read_importfile(fname[0
+        ])
         print(self._model.data)
         self._filltable(self._model.data)
         
