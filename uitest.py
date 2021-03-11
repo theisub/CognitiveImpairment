@@ -18,6 +18,7 @@ from sklearn.preprocessing import StandardScaler, LabelBinarizer
 from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
 import math
+import joblib
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, roc_auc_score, classification_report, confusion_matrix
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
@@ -38,7 +39,7 @@ class Model(QtGui.QStandardItemModel):
         QtGui.QStandardItemModel.__init__(self)
 
         self.data = None
-        self.clasiffier = None
+        self.classifier = None
         self.column_names = None
         self.patient_info = None
         self.importances = None
@@ -48,16 +49,18 @@ class Model(QtGui.QStandardItemModel):
         return self.data
     
     def get_classifier(self):
-        return self.clasiffier
+        return self.classifier
     
     def read_importfile(self,filename):
         FullDataset = pd.read_csv(filename)
+
+        self.column_names = FullDataset.columns.values[60:82]
 
         X = FullDataset.iloc[::,60:82].values
         y = FullDataset.iloc[::,10].values
 
         self.data  = X
-        classifier = self.classsifier 
+        classifier = self.classifier 
         self.prediction_array = classifier.predict(self.data)
         self.importances = classifier.feature_importances_
         print(self.prediction_array)
@@ -90,7 +93,7 @@ class Model(QtGui.QStandardItemModel):
         self.data = X
 
         classifier = RandomForestRegressor(n_estimators = 10)
-        self.classsifier = classifier.fit(X, y)
+        self.classifier = classifier.fit(X, y)
 
 
 class Controller:
@@ -156,6 +159,11 @@ class Controller:
         ])
         print(self._model.data)
         self._filltable(self._model.data)
+    def _exportModel(self,filename):
+        fname = QFileDialog.getSaveFileName(None,'Save file','','Model files (*.pkl)')
+        joblib.dump(self._model.classifier, fname[0], compress=9)
+        
+
     def _plotGraph(self):
         if self._model.prediction_array is not None:
             plt.plot(self._model.prediction_array,marker='o')
@@ -164,6 +172,12 @@ class Controller:
             mplcursors.cursor(hover=True)
             plt.ylim(0,2)
             plt.show()
+    def _importModel(self):
+        fname = QFileDialog.getOpenFileName(None, 'Open file', 
+         '',"Model files (*.pkl)")
+        print(fname[0])
+        self._model.classifier = joblib.load(fname[0])
+
 
         
 
@@ -171,6 +185,8 @@ class Controller:
         self._view.importFileBtn.clicked.connect(partial(self._importFile,"To_test.csv"))
         self._view.importDbBtn.clicked.connect(partial(self._importDb,"File2_filtered.csv"))
         self._view.plotBtn.clicked.connect(self._plotGraph)
+        self._view.importModel.clicked.connect(self._importModel)
+        self._view.exportModel.clicked.connect(self._exportModel)
 
 
 
@@ -199,12 +215,18 @@ class Window(QMainWindow):
         self.importFileBtn = QPushButton('Импортировать файл ')
         self.importDbBtn = QPushButton('Импорт базы')
         self.plotBtn = QPushButton('Отобразить график стадий')
+        self.importModel = QPushButton('Импортировать регрессор')
+        self.exportModel = QPushButton('Экспортировать регрессор')
+
 
         
         grid_layout.addWidget(self.importFileBtn, 0, 0)
         grid_layout.addWidget(self.table, 0, 1)   
         grid_layout.addWidget(self.importDbBtn,1, 1)
-        grid_layout.addWidget(self.plotBtn,2,1)   
+        grid_layout.addWidget(self.plotBtn,2,1)
+        grid_layout.addWidget(self.importModel,3,1)   
+        grid_layout.addWidget(self.exportModel,4,1)
+   
 
 
 
