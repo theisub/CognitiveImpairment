@@ -12,6 +12,7 @@ from functools import partial
 import mplcursors
 
 import numpy as np
+import pymongo as mong
 import pandas as pd
 import csv
 from sklearn.preprocessing import StandardScaler, LabelBinarizer
@@ -70,7 +71,7 @@ class Model(QtGui.QStandardItemModel):
         FullDataset = pd.read_csv(filename)
 
         self.column_names = FullDataset.columns.values[60:82]
-
+        self.patient_info = FullDataset.iloc[::,0].values
         X = FullDataset.iloc[::,60:82].values
         np.set_printoptions(linewidth=120)  # default 75
         print(FullDataset.columns.values[60:82])
@@ -149,6 +150,13 @@ class Controller:
         self._model.read_dbfile(filename)
         print(self._model.data)
         self._filltable(self._model.data)
+        client = mong.MongoClient('localhost',27017)
+        db = client['CognitiveImpairment']
+        df = pd.DataFrame(data=self._model.data,columns=self._model.column_names)
+        series_collection = db['CognitiveImpairment']
+        series_collection.drop()
+        test = series_collection.insert_many(df.to_dict('records'))
+        print(test)
 
     
     def _importFile(self,filename):
