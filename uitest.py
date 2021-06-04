@@ -1,4 +1,5 @@
 import sys
+from tkinter.constants import NONE
 
 from PyQt5.QtWidgets import QApplication, QWidget
 from PyQt5.QtWidgets import QLabel
@@ -10,6 +11,7 @@ from PyQt5.QtCore import QSize, Qt, QVariant
 from PyQt5 import QtGui
 from functools import partial
 import mplcursors
+from scipy.optimize import curve_fit
 
 import numpy as np
 import pymongo as mong
@@ -22,11 +24,28 @@ import math
 import joblib
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, roc_auc_score, classification_report, confusion_matrix
-from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor, GradientBoostingRegressor
 
 data = {'col1':['1','2','3','4'],
         'col2':['1','2','1','3'],
         'col3':['1','1','2','1']}
+
+def calculate_result(arr):
+    mean = np.mean(arr)
+    print(mean)
+    if (mean >1.55):
+        print('Предварительный диагноз: Легкое когнитивное нарушение')
+    elif (mean >0.55):
+        print('Предварительный диагноз: субъективное когнитивное нарушение')
+    elif (mean < 0.45):
+        print('Отклонений не обнаружено')
+    else:
+        print('Предварительный диагноз не может быть поставлен на текущих данных из-за возможной принадлежности к двум группам диагноза одновремено. Измените набор данных')
+
+
+def objective(x, a, b, c,d):
+	return a * np.sin(b - x) + c * x**2 + d
+    #return a + b * x + c
 
 
 class ColorDelegate(QStyledItemDelegate):
@@ -40,11 +59,16 @@ class Model(QtGui.QStandardItemModel):
         QtGui.QStandardItemModel.__init__(self)
 
         self.data = None
+        self.historical = None
         self.classifier = None
         self.column_names = None
+        self.y = None
         self.patient_info = None
         self.importances = None
         self.prediction_array = None
+        self.important_columns = None
+        self.popt = None
+        self.x_line = None
     
     def get_data(self):
         return self.data
@@ -52,49 +76,115 @@ class Model(QtGui.QStandardItemModel):
     def get_classifier(self):
         return self.classifier
     
+
+    
     def read_importfile(self,filename):
-        FullDataset = pd.read_csv(filename)
 
-        self.column_names = FullDataset.columns.values[60:82]
+        X = pd.read_csv(filename)
+        print(X)
+        X = X.select_dtypes(include="number")
+        X=X.dropna(axis = 1, how = 'all')
+        X = X.dropna()
 
-        X = FullDataset.iloc[::,60:82].values
-        y = FullDataset.iloc[::,10].values
+        print(self.important_columns)
+        #self.column_names = FullDataset.columns.values[FullDataset.columns!='тяжестьнаруш']
+
+
+        X = X.loc[:,X.columns != 'тяжестьнаруш']
+        if (self.important_columns == None):
+
+            print(X.columns.values)
+            intersection_list = [value for value in self.column_names if value in X.columns.values]
+            X= X[intersection_list].values
+        else:
+            self.column_names=self.column_names[self.important_columns]
+            X= X[self.column_names].values
+            ChangedDataset = self.FullDataset[self.column_names]
+            #ChangedDataset = ChangedDataset.dropna()
+            y = self.y[ChangedDataset.index]
+            self.classifier = self.classifier.fit(ChangedDataset,y)
+            print("R2-Score:",self.classifier.score(ChangedDataset,y))
+
 
         self.data  = X
         classifier = self.classifier 
         self.prediction_array = classifier.predict(self.data)
         self.importances = classifier.feature_importances_
         print(self.prediction_array)
+        calculate_result(self.prediction_array)
+
+
+
+        # choose the input and output variables
+        x, y =  np.arange(0,len(self.prediction_array)),self.prediction_array
+        # curve fit
+        popt, _ = curve_fit(objective, x, y)
+        # summarize the parameter values
+        a, b, c,d = popt
+        print('y = %.5f * x + %.5f * x^2 + %.5f' % (a, b, c))
+        # plot input vs output
+        #plt.scatter(x, y)
+        # define a sequence of inputs between the smallest and largest known inputs
+        self.x_line = np.arange(min(x), max(x)+2, 1)
+        self.popt = popt
+        # calculate the output for the range
+        y_line = objective(self.x_line, a, b, c,d)
+        # create a line plot for the mapping function
+        #plt.plot(x_line, y_line, '--', color='red')
+        #plt.show()
+        
         
 
     def read_dbfile(self, filename):
         FullDataset = pd.read_csv(filename)
+        FullDataset = FullDataset.select_dtypes(include="number")
+        self.FullDataset = FullDataset
+        y = FullDataset.iloc[::,FullDataset.columns == 'тяжестьнаруш'].values
+        for i in range(0,len(y)):
+            if (y[i]== 1):
+                y[i] = 2
+            elif (y[i]==2):
+                y[i]=1
 
-        self.column_names = FullDataset.columns.values[60:82]
-        self.patient_info = FullDataset.iloc[::,0].values
-        X = FullDataset.iloc[::,60:82].values
+        self.y = y
+        
+        self.patient_info = y # юзался для фамилий изначально, теперь диагнозы
+
+        data = FullDataset.loc[:,FullDataset.columns != 'тяжестьнаруш']
+        data = data.dropna(axis = 1, how = 'any')
+        self.data = data
+
+        FullDataset = FullDataset.dropna()
+
+        self.column_names = data.columns
+
+        y = y[data.index]
+        X = data.values
+        #self.FullDataset = FullDataset
         np.set_printoptions(linewidth=120)  # default 75
-        print(FullDataset.columns.values[60:82])
+        print(self.column_names)
         #X = StandardScaler().fit_transform(X)
-
-        y = FullDataset.iloc[::,10].values
+        
 
         print(len(X))
         print(len(y))
 
-        for index,row in enumerate(X):
-            if (np.all(np.isfinite(row)) == False or np.any(np.isnan(row)) == True ):
-                print(index)
-                X=np.delete(X,(index),axis=0)
-                y= np.delete(y,(index),axis=0)
 
-        #New_X = FullDataset.iloc[::,60:82].values[len(FullDataset)-28:len(FullDataset)-27]
-        #X_train, X_test,y_train,y_test = train_test_split(X,y,test_size=0.2)
+        #self.historical = X
 
-        self.data = X
-
-        classifier = RandomForestRegressor(n_estimators = 10)
+        # выкинуть в функцию старт 
+        classifier = RandomForestRegressor(bootstrap=False, ccp_alpha=0.0, criterion='mse',
+                      max_depth=9, max_features='sqrt', max_leaf_nodes=None,
+                      max_samples=None, min_impurity_decrease=0,
+                      min_impurity_split=None, min_samples_leaf=5,
+                      min_samples_split=7, min_weight_fraction_leaf=0.0,
+                      n_estimators=100, n_jobs=-1, oob_score=False,
+                      random_state=7207, verbose=0, warm_start=False)
+        
         self.classifier = classifier.fit(X, y)
+
+        # выкинуть в функцию финиш
+
 
 
 class Controller:
@@ -106,6 +196,7 @@ class Controller:
     def _filltable(self,data):
         
         self._view.model.clear()
+        testik = np.empty(0,dtype=int)
 
         for row in data:
             column=0    
@@ -117,20 +208,20 @@ class Controller:
                 for item in items:
                     if self._model.importances[column] / max(self._model.importances) > 0.80:
                         item.setForeground(QtGui.QBrush(QtGui.QColor(255, 0, 0)))
+                        testik = np.append(testik,column)
                     elif self._model.importances[column] / max(self._model.importances) > 0.40:
                         item.setForeground(QtGui.QBrush(QtGui.QColor(255, 140, 0)))
+                        testik = np.append(testik,column)
                     elif self._model.importances[column] / max(self._model.importances) > 0.20:
                         item.setForeground(QtGui.QBrush(QtGui.QColor(0, 255, 0)))
+                        testik = np.append(testik,column)
                     else:
                         item.setForeground(QtGui.QBrush(QtGui.QColor(0, 0, 0)))
                     column = column +1
 
-
-
-
-
-
             self._view.model.appendRow(items)
+        
+        self._model.important_columns = list(set(testik)) if testik.size!=0 else None
         self._view.model.setHorizontalHeaderLabels(list(self._model.column_names))
         self._view.table.setModel(self._view.model)
         delegate = ColorDelegate(self._view.table)
@@ -149,10 +240,10 @@ class Controller:
         #print(fname[0])
         self._model.read_dbfile(filename)
         print(self._model.data)
-        self._filltable(self._model.data)
+        self._filltable(self._model.data.values)
         client = mong.MongoClient('localhost',27017)
         db = client['CognitiveImpairment']
-        df = pd.DataFrame(data=self._model.data,columns=self._model.column_names)
+        df = pd.DataFrame(data=self._model.data.values,columns=self._model.data.columns)
         series_collection = db['CognitiveImpairment']
         series_collection.drop()
         test = series_collection.insert_many(df.to_dict('records'))
@@ -167,6 +258,7 @@ class Controller:
         ])
         print(self._model.data)
         self._filltable(self._model.data)
+
     def _exportModel(self,filename):
         fname = QFileDialog.getSaveFileName(None,'Save file','','Model files (*.pkl)')
         joblib.dump(self._model.classifier, fname[0], compress=9)
@@ -174,10 +266,19 @@ class Controller:
 
     def _plotGraph(self):
         if self._model.prediction_array is not None:
-            plt.plot(self._model.prediction_array,marker='o')
+            plt.plot(self._model.prediction_array,marker='o',color='blue')
             plt.xlabel('Номер визита',fontsize=10)
-            plt.ylabel('Оценка диагноза 0 - норма, 1-лкн, 2-скн',fontsize=10)
+            #plt.ylabel('Оценка диагноза 0 - норма, 1-скн, 2-лкн',fontsize=10)
             mplcursors.cursor(hover=True)
+            a,b,c,d = self._model.popt
+            y_line = objective(self._model.x_line, a, b, c,d)
+            next_visits_ctr = 3
+            forecast = np.arange(len(self._model.prediction_array),len(self._model.prediction_array)+next_visits_ctr)
+            predictions = objective(np.asarray(forecast),a,b,c,d)
+            plt.plot(forecast,predictions,'--',markerfacecolor='none',marker='o',color='blue')
+        # create a line plot for the mapping function
+            plt.plot(self._model.x_line, y_line, '--', color='red')
+            
             plt.ylim(0,2)
             plt.show()
     def _importModel(self):
@@ -185,8 +286,29 @@ class Controller:
          '',"Model files (*.pkl)")
         print(fname[0])
         self._model.classifier = joblib.load(fname[0])
+    def _showHistorical(self):
+        client = mong.MongoClient('localhost',27017)
+        db = client['CognitiveImpairment']
+        df = pd.DataFrame(data=self._model.historical,columns=self._model.column_names)
+        series_collection = db['CognitiveImpairment']
+        all_data = (series_collection.find({},{"_id":0}))
+        to_test= np.array([])
+        for document in all_data:
+            lol = np.asarray(list(document.values()))
+            if to_test.size!=0:
+                to_test = np.vstack([to_test,lol])
+            else:
+                to_test=lol
+        pca = PCA(n_components=2)
+        tryout = to_test[1:]
+        plot_points = pca.fit_transform(to_test)
+        new_points = pca.fit_transform(self._model.data)
+        
+        plt.scatter(plot_points[:,0],plot_points[:,1],c=self._model.patient_info)
+        plt.scatter(new_points[:,0],new_points[:,1],c='red')
 
-
+        plt.show()
+        print(to_test)
         
 
     def _connectSignals(self):
@@ -195,6 +317,7 @@ class Controller:
         self._view.plotBtn.clicked.connect(self._plotGraph)
         self._view.importModel.clicked.connect(self._importModel)
         self._view.exportModel.clicked.connect(self._exportModel)
+        self._view.showHistoricalBtn.clicked.connect(self._showHistorical)
 
 
 
@@ -206,7 +329,7 @@ class Window(QMainWindow):
 
         self.setMinimumSize(QSize(480, 240))
         self.model = QtGui.QStandardItemModel(self)
-        self.setWindowTitle("Работа с QTableWidget")    
+        self.setWindowTitle("forecast")    
         central_widget = QWidget(self)                  
         self.setCentralWidget(central_widget)           
  
@@ -225,6 +348,9 @@ class Window(QMainWindow):
         self.plotBtn = QPushButton('Отобразить график стадий')
         self.importModel = QPushButton('Импортировать регрессор')
         self.exportModel = QPushButton('Экспортировать регрессор')
+        self.showHistoricalBtn = QPushButton('Сравнить с историческими данными')
+
+
 
 
         
@@ -234,6 +360,7 @@ class Window(QMainWindow):
         grid_layout.addWidget(self.plotBtn,2,1)
         grid_layout.addWidget(self.importModel,3,1)   
         grid_layout.addWidget(self.exportModel,4,1)
+        grid_layout.addWidget(self.showHistoricalBtn,5,1)
    
 
 
