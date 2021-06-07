@@ -11,6 +11,7 @@ from PyQt5.QtCore import QSize, Qt, QVariant
 from PyQt5 import QtGui
 from functools import partial
 import mplcursors
+from numpy.core.numeric import tensordot
 from scipy.optimize import curve_fit
 
 import numpy as np
@@ -48,6 +49,13 @@ def objective(x, a, b, c,d):
     #return a + b * x + c
 
 
+class Classifier:
+    def __init__(self):
+        self.classifier_model = None
+        self.important_columns = None
+
+
+
 class ColorDelegate(QStyledItemDelegate):
     def initStyleOption(self, option, index):
         super().initStyleOption(option, index)
@@ -60,13 +68,12 @@ class Model(QtGui.QStandardItemModel):
 
         self.data = None
         self.historical = None
-        self.classifier = None
+        self.classifier = Classifier()
         self.column_names = None
         self.y = None
         self.patient_info = None
         self.importances = None
         self.prediction_array = None
-        self.important_columns = None
         self.popt = None
         self.x_line = None
     
@@ -86,30 +93,33 @@ class Model(QtGui.QStandardItemModel):
         X=X.dropna(axis = 1, how = 'all')
         X = X.dropna()
 
-        print(self.important_columns)
+        print(self.classifier.important_columns)
         #self.column_names = FullDataset.columns.values[FullDataset.columns!='тяжестьнаруш']
 
 
         X = X.loc[:,X.columns != 'тяжестьнаруш']
-        if (self.important_columns == None):
+        if (self.classifier.important_columns == None):
 
             print(X.columns.values)
             intersection_list = [value for value in self.column_names if value in X.columns.values]
             X= X[intersection_list].values
         else:
-            self.column_names=self.column_names[self.important_columns]
+
+            print(self.column_names)
+            print(self.classifier.important_columns)
+            self.column_names=[value for value in self.column_names if value in self.classifier.important_columns]
             X= X[self.column_names].values
             ChangedDataset = self.FullDataset[self.column_names]
             #ChangedDataset = ChangedDataset.dropna()
             y = self.y[ChangedDataset.index]
-            self.classifier = self.classifier.fit(ChangedDataset,y)
-            print("R2-Score:",self.classifier.score(ChangedDataset,y))
+            self.classifier.classifier_model = self.classifier.classifier_model.fit(ChangedDataset,y)
+            print("R2-Score:",self.classifier.classifier_model.score(ChangedDataset,y))
 
 
         self.data  = X
         classifier = self.classifier 
-        self.prediction_array = classifier.predict(self.data)
-        self.importances = classifier.feature_importances_
+        self.prediction_array = classifier.classifier_model.predict(self.data)
+        self.importances = classifier.classifier_model.feature_importances_
         print(self.prediction_array)
         calculate_result(self.prediction_array)
 
@@ -140,12 +150,14 @@ class Model(QtGui.QStandardItemModel):
         FullDataset = FullDataset.select_dtypes(include="number")
         self.FullDataset = FullDataset
         y = FullDataset.iloc[::,FullDataset.columns == 'тяжестьнаруш'].values
+        '''
         for i in range(0,len(y)):
             if (y[i]== 1):
                 y[i] = 2
             elif (y[i]==2):
                 y[i]=1
-
+        '''
+        
         self.y = y
         
         self.patient_info = y # юзался для фамилий изначально, теперь диагнозы
@@ -181,7 +193,7 @@ class Model(QtGui.QStandardItemModel):
                       n_estimators=100, n_jobs=-1, oob_score=False,
                       random_state=7207, verbose=0, warm_start=False)
         
-        self.classifier = classifier.fit(X, y)
+        self.classifier.classifier_model = classifier.fit(X, y)
 
         # выкинуть в функцию финиш
 
@@ -196,7 +208,7 @@ class Controller:
     def _filltable(self,data):
         
         self._view.model.clear()
-        testik = np.empty(0,dtype=int)
+        testik = np.empty(0,dtype=str)
 
         for row in data:
             column=0    
@@ -208,20 +220,20 @@ class Controller:
                 for item in items:
                     if self._model.importances[column] / max(self._model.importances) > 0.80:
                         item.setForeground(QtGui.QBrush(QtGui.QColor(255, 0, 0)))
-                        testik = np.append(testik,column)
+                        testik = np.append(testik, self._model.column_names[column])
                     elif self._model.importances[column] / max(self._model.importances) > 0.40:
                         item.setForeground(QtGui.QBrush(QtGui.QColor(255, 140, 0)))
-                        testik = np.append(testik,column)
+                        testik = np.append(testik,self._model.column_names[column])
                     elif self._model.importances[column] / max(self._model.importances) > 0.20:
                         item.setForeground(QtGui.QBrush(QtGui.QColor(0, 255, 0)))
-                        testik = np.append(testik,column)
+                        testik = np.append(testik,self._model.column_names[column])
                     else:
                         item.setForeground(QtGui.QBrush(QtGui.QColor(0, 0, 0)))
                     column = column +1
 
             self._view.model.appendRow(items)
         
-        self._model.important_columns = list(set(testik)) if testik.size!=0 else None
+        self._model.classifier.important_columns = list(set(testik)) if testik.size!=0 else None
         self._view.model.setHorizontalHeaderLabels(list(self._model.column_names))
         self._view.table.setModel(self._view.model)
         delegate = ColorDelegate(self._view.table)
@@ -313,7 +325,7 @@ class Controller:
 
     def _connectSignals(self):
         self._view.importFileBtn.clicked.connect(partial(self._importFile,"To_test.csv"))
-        self._view.importDbBtn.clicked.connect(partial(self._importDb,"File2_filtered.csv"))
+        self._view.importDbBtn.clicked.connect(partial(self._importDb,"File2_filter (1).csv"))
         self._view.plotBtn.clicked.connect(self._plotGraph)
         self._view.importModel.clicked.connect(self._importModel)
         self._view.exportModel.clicked.connect(self._exportModel)
