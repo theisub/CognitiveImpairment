@@ -94,7 +94,7 @@ class Model(QtGui.QStandardItemModel):
         X = X.dropna()
 
         print(self.classifier.important_columns)
-        #self.column_names = FullDataset.columns.values[FullDataset.columns!='тяжестьнаруш']
+        self.column_names = self.FullDataset.columns.values[self.FullDataset.columns!='тяжестьнаруш']
 
 
         X = X.loc[:,X.columns != 'тяжестьнаруш']
@@ -103,16 +103,27 @@ class Model(QtGui.QStandardItemModel):
             print(X.columns.values)
             intersection_list = [value for value in self.column_names if value in X.columns.values]
             X= X[intersection_list].values
+            self.column_names = intersection_list
+            
+            if (self.classifier.classifier_model.n_features_ > len(intersection_list)):
+                ChangedDataset = self.FullDataset[intersection_list]
+                ChangedDataset = ChangedDataset.dropna(axis = 0, how = 'any')
+                y = self.y[ChangedDataset.index]
+                self.classifier.classifier_model = self.classifier.classifier_model.fit(ChangedDataset,y)
+                print("USED SIZE OF DB - ",ChangedDataset.shape)
+                print("R2-Score:",self.classifier.classifier_model.score(ChangedDataset,y))
         else:
 
             print(self.column_names)
             print(self.classifier.important_columns)
             self.column_names=[value for value in self.column_names if value in self.classifier.important_columns]
+            print(self.column_names)
             X= X[self.column_names].values
             ChangedDataset = self.FullDataset[self.column_names]
-            #ChangedDataset = ChangedDataset.dropna()
+            ChangedDataset = ChangedDataset.dropna(axis = 0, how = 'any')
             y = self.y[ChangedDataset.index]
             self.classifier.classifier_model = self.classifier.classifier_model.fit(ChangedDataset,y)
+            print("USED SIZE OF DB - ",ChangedDataset.shape)
             print("R2-Score:",self.classifier.classifier_model.score(ChangedDataset,y))
 
 
@@ -163,10 +174,10 @@ class Model(QtGui.QStandardItemModel):
         self.patient_info = y # юзался для фамилий изначально, теперь диагнозы
 
         data = FullDataset.loc[:,FullDataset.columns != 'тяжестьнаруш']
-        data = data.dropna(axis = 1, how = 'any')
+        data = data.dropna(axis = 0, how = 'any')
         self.data = data
 
-        FullDataset = FullDataset.dropna()
+        #FullDataset = FullDataset.dropna()
 
         self.column_names = data.columns
 
@@ -194,6 +205,10 @@ class Model(QtGui.QStandardItemModel):
                       random_state=7207, verbose=0, warm_start=False)
         
         self.classifier.classifier_model = classifier.fit(X, y)
+        print("USED SIZE OF DB - ",X.shape)
+        print("R2-Score:",self.classifier.classifier_model.score(X,y))
+
+
 
         # выкинуть в функцию финиш
 
@@ -255,7 +270,7 @@ class Controller:
         self._filltable(self._model.data.values)
         client = mong.MongoClient('localhost',27017)
         db = client['CognitiveImpairment']
-        df = pd.DataFrame(data=self._model.data.values,columns=self._model.data.columns)
+        df = pd.DataFrame(data=self._model.FullDataset.values,columns=self._model.FullDataset.columns)
         series_collection = db['CognitiveImpairment']
         series_collection.drop()
         test = series_collection.insert_many(df.to_dict('records'))
@@ -305,18 +320,28 @@ class Controller:
         series_collection = db['CognitiveImpairment']
         all_data = (series_collection.find({},{"_id":0}))
         to_test= np.array([])
+        patients_diagnosis = np.array([])
+
         for document in all_data:
-            lol = np.asarray(list(document.values()))
+            lol = np.asarray(list( map(document.get, self._model.column_names)))
+            lol = lol[~np.isnan(lol).any(axis=0)]
+            if lol.size == 0:
+                print('empty')
+                continue
+
             if to_test.size!=0:
                 to_test = np.vstack([to_test,lol])
+                patients_diagnosis = np.append(patients_diagnosis,document['тяжестьнаруш'])
             else:
                 to_test=lol
+                patients_diagnosis = np.append(patients_diagnosis,document['тяжестьнаруш'])
+
         pca = PCA(n_components=2)
         tryout = to_test[1:]
         plot_points = pca.fit_transform(to_test)
         new_points = pca.fit_transform(self._model.data)
         
-        plt.scatter(plot_points[:,0],plot_points[:,1],c=self._model.patient_info)
+        plt.scatter(plot_points[:,0],plot_points[:,1],c=patients_diagnosis)
         plt.scatter(new_points[:,0],new_points[:,1],c='red')
 
         plt.show()
