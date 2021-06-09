@@ -116,8 +116,11 @@ class Model(QtGui.QStandardItemModel):
 
             print(self.column_names)
             print(self.classifier.important_columns)
+            
             self.column_names=[value for value in self.column_names if value in self.classifier.important_columns]
+            #self.column_names = list(set(self.column_names).intersection(set(self.classifier.important_columns)))
             print(self.column_names)
+            self.column_names = [value for value in self.column_names if value in X.columns.values]
             X= X[self.column_names].values
             ChangedDataset = self.FullDataset[self.column_names]
             ChangedDataset = ChangedDataset.dropna(axis = 0, how = 'any')
@@ -161,13 +164,6 @@ class Model(QtGui.QStandardItemModel):
         FullDataset = FullDataset.select_dtypes(include="number")
         self.FullDataset = FullDataset
         y = FullDataset.iloc[::,FullDataset.columns == 'тяжестьнаруш'].values
-        '''
-        for i in range(0,len(y)):
-            if (y[i]== 1):
-                y[i] = 2
-            elif (y[i]==2):
-                y[i]=1
-        '''
         
         self.y = y
         
