@@ -1,7 +1,7 @@
 import sys
 from tkinter.constants import NONE
 
-from PyQt5.QtWidgets import QApplication, QWidget
+from PyQt5.QtWidgets import QApplication, QFormLayout, QLineEdit, QTextEdit, QWidget
 from PyQt5.QtWidgets import QLabel
 from PyQt5.QtWidgets import QMainWindow
 from PyQt5.QtWidgets import QStatusBar
@@ -164,7 +164,7 @@ class Model(QtGui.QStandardItemModel):
         FullDataset = FullDataset.select_dtypes(include="number")
         self.FullDataset = FullDataset
         y = FullDataset.iloc[::,FullDataset.columns == 'тяжестьнаруш'].values
-        
+
         self.y = y
         
         self.patient_info = y # юзался для фамилий изначально, теперь диагнозы
@@ -360,21 +360,21 @@ class Window(QMainWindow):
         
         QMainWindow.__init__(self)
 
-        self.setMinimumSize(QSize(480, 240))
+        self.setMinimumSize(QSize(480, 360))
         self.model = QtGui.QStandardItemModel(self)
         self.setWindowTitle("forecast")    
         central_widget = QWidget(self)                  
         self.setCentralWidget(central_widget)           
  
-        grid_layout = QGridLayout()             
+        grid_layout = QGridLayout()
         central_widget.setLayout(grid_layout)   
- 
+
         self.table = QTableView(self)  
         self.table.horizontalHeader().setStretchLastSection(True)
 
 
  
-        self.table.hide()
+        #self.table.hide()
 
         self.importFileBtn = QPushButton('Импортировать файл ')
         self.importDbBtn = QPushButton('Импорт базы')
@@ -382,14 +382,15 @@ class Window(QMainWindow):
         self.importModel = QPushButton('Импортировать регрессор')
         self.exportModel = QPushButton('Экспортировать регрессор')
         self.showHistoricalBtn = QPushButton('Сравнить с историческими данными')
-
+        self.resultBox = QTextEdit('')
 
 
 
         
         grid_layout.addWidget(self.importFileBtn, 0, 0)
-        grid_layout.addWidget(self.table, 0, 1)   
-        grid_layout.addWidget(self.importDbBtn,1, 1)
+        grid_layout.addWidget(self.resultBox,1,0)
+        grid_layout.addWidget(self.table, 0, 1,alignment=Qt.AlignBottom)   
+        grid_layout.addWidget(self.importDbBtn,1, 1,alignment=Qt.AlignTop)
         grid_layout.addWidget(self.plotBtn,2,1)
         grid_layout.addWidget(self.importModel,3,1)   
         grid_layout.addWidget(self.exportModel,4,1)
