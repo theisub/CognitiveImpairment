@@ -13,6 +13,7 @@ from functools import partial
 import mplcursors
 from numpy.core.numeric import tensordot
 from scipy.optimize import curve_fit
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 
 import numpy as np
 import pymongo as mong
@@ -35,13 +36,13 @@ def calculate_result(arr):
     mean = np.mean(arr)
     print(mean)
     if (mean >1.55):
-        print('Предварительный диагноз: Легкое когнитивное нарушение')
+        return('Предварительный диагноз: Легкое когнитивное нарушение')
     elif (mean >0.55):
-        print('Предварительный диагноз: субъективное когнитивное нарушение')
+        return('Предварительный диагноз: субъективное когнитивное нарушение')
     elif (mean < 0.45):
-        print('Отклонений не обнаружено')
+        return('Отклонений не обнаружено')
     else:
-        print('Предварительный диагноз не может быть поставлен на текущих данных из-за возможной принадлежности к двум группам диагноза одновремено. Измените набор данных')
+        return('Предварительный диагноз не может быть поставлен на текущих данных из-за возможной принадлежности к двум группам диагноза одновремено. Измените набор данных')
 
 
 def objective(x, a, b, c,d):
@@ -135,7 +136,7 @@ class Model(QtGui.QStandardItemModel):
         self.prediction_array = classifier.classifier_model.predict(self.data)
         self.importances = classifier.classifier_model.feature_importances_
         print(self.prediction_array)
-        calculate_result(self.prediction_array)
+        text_result = calculate_result(self.prediction_array)
 
 
 
@@ -156,6 +157,7 @@ class Model(QtGui.QStandardItemModel):
         # create a line plot for the mapping function
         #plt.plot(x_line, y_line, '--', color='red')
         #plt.show()
+        return text_result
         
         
 
@@ -251,7 +253,7 @@ class Controller:
 
         #for column in range(0,self._view.model.columnCount()):
         #    self._view.table.setItemDelegateForColumn(column,delegate,o)
-        self._model.setData(self._model.index(2,2),QVariant(QtGui.QBrush(QtGui.QColor(218, 94, 242))))
+        #self._model.setData(self._model.index(2,2),QVariant(QtGui.QBrush(QtGui.QColor(218, 94, 242))))
 
         self._view.table.show()
         
@@ -277,10 +279,12 @@ class Controller:
         fname = QFileDialog.getOpenFileName(None, 'Open file', 
          '',"Csv files (*.csv)")
         print(fname[0])
-        self._model.read_importfile(fname[0
+        result_text = self._model.read_importfile(fname[0
         ])
         print(self._model.data)
         self._filltable(self._model.data)
+        self._view.resultBox.clear()
+        self._view.resultBox.setText(result_text)
 
     def _exportModel(self,filename):
         fname = QFileDialog.getSaveFileName(None,'Save file','','Model files (*.pkl)')
@@ -289,21 +293,28 @@ class Controller:
 
     def _plotGraph(self):
         if self._model.prediction_array is not None:
-            plt.plot(self._model.prediction_array,marker='o',color='blue')
-            plt.xlabel('Номер визита',fontsize=10)
+           
             #plt.ylabel('Оценка диагноза 0 - норма, 1-скн, 2-лкн',fontsize=10)
             mplcursors.cursor(hover=True)
             a,b,c,d = self._model.popt
             y_line = objective(self._model.x_line, a, b, c,d)
-            next_visits_ctr = 3
+            next_visits_ctr = 0
             forecast = np.arange(len(self._model.prediction_array),len(self._model.prediction_array)+next_visits_ctr)
             predictions = objective(np.asarray(forecast),a,b,c,d)
-            plt.plot(forecast,predictions,'--',markerfacecolor='none',marker='o',color='blue')
+
+
+            self._view.figure.clear()
+            ax = self._view.figure.add_subplot(111)
+            ax.clear()
+            ax.plot(forecast,predictions,'--',markerfacecolor='none',marker='o',color='blue')
+            ax.plot(self._model.prediction_array,marker='o',color='blue')
+            ax.set_xlabel('Номер визита',fontsize=10)
         # create a line plot for the mapping function
-            plt.plot(self._model.x_line, y_line, '--', color='red')
+            ax.plot(self._model.x_line, y_line, '--', color='red')
             
-            plt.ylim(0,2)
-            plt.show()
+            ax.set_ylim(0,2)
+            self._view.canvas.draw()
+
     def _importModel(self):
         fname = QFileDialog.getOpenFileName(None, 'Open file', 
          '',"Model files (*.pkl)")
@@ -336,11 +347,17 @@ class Controller:
         tryout = to_test[1:]
         plot_points = pca.fit_transform(to_test)
         new_points = pca.fit_transform(self._model.data)
-        
-        plt.scatter(plot_points[:,0],plot_points[:,1],c=patients_diagnosis)
-        plt.scatter(new_points[:,0],new_points[:,1],c='red')
 
-        plt.show()
+        self._view.figure.clear()
+        ax = self._view.figure.add_subplot(111)
+        ax.clear()
+        
+        ax.scatter(plot_points[:,0],plot_points[:,1],c=patients_diagnosis)
+        ax.scatter(new_points[:,0],new_points[:,1],c='red')
+
+        self._view.canvas.draw()
+
+        #plt.show()
         print(to_test)
         
 
@@ -354,20 +371,23 @@ class Controller:
 
 
 
-class Window(QMainWindow):
-    """Main Window."""
-    def __init__(self, parent=None):
-        
-        QMainWindow.__init__(self)
 
-        self.setMinimumSize(QSize(480, 360))
-        self.model = QtGui.QStandardItemModel(self)
-        self.setWindowTitle("forecast")    
-        central_widget = QWidget(self)                  
-        self.setCentralWidget(central_widget)           
- 
-        grid_layout = QGridLayout()
-        central_widget.setLayout(grid_layout)   
+class UIWindow(QWidget):
+    def __init__(self, parent=None):
+        super(UIWindow, self).__init__(parent)
+        # mainwindow.setWindowIcon(QtGui.QIcon('PhotoIcon.png'))
+        
+        # a figure instance to plot on
+        self.figure = plt.figure()
+   
+        # this is the Canvas Widget that 
+        # displays the 'figure'it takes the
+        # 'figure' instance as a parameter to __init__
+        self.canvas = FigureCanvas(self.figure)
+
+        self.ToolsBTN = QPushButton('text', self)
+        self.ToolsBTN.move(50, 350)
+        
 
         self.table = QTableView(self)  
         self.table.horizontalHeader().setStretchLastSection(True)
@@ -375,6 +395,10 @@ class Window(QMainWindow):
 
  
         #self.table.hide()
+
+        self.resultLbl = QLabel('Результат')
+        self.tableLbl = QLabel('Таблица')
+
 
         self.importFileBtn = QPushButton('Импортировать файл ')
         self.importDbBtn = QPushButton('Импорт базы')
@@ -384,17 +408,76 @@ class Window(QMainWindow):
         self.showHistoricalBtn = QPushButton('Сравнить с историческими данными')
         self.resultBox = QTextEdit('')
 
+class UIToolTab(QWidget):
+    def __init__(self, parent=None):
+        super(UIToolTab, self).__init__(parent)
+        self.CPSBTN = QPushButton("text2", self)
+        #self.CPSBTN.move(100, 350)
+
+
+class Window(QMainWindow):
+    """Main Window."""
+    def __init__(self, parent=None):
+        
+        QMainWindow.__init__(self)
+
+        self.setMinimumSize(QSize(480, 360))
+        self.model = QtGui.QStandardItemModel(self)
+        self.setWindowTitle("forecast")
+        self.uiWindow = UIWindow()
+        self.uiToolTab = UIToolTab()
+
+        self.startUIToolTab(self.model)
+
+    def startUIWindow(self):
+        
+        self.Window = UIWindow(self)
+        self.setWindowTitle("UIWindow")
+        self.setCentralWidget(self.Window)
+ 
+       
+        central_widget = QWidget(self)
+        self.setCentralWidget(central_widget)           
+             
+        grid_layout = QGridLayout()
+        central_widget.setLayout(grid_layout)   
+
+       
+        
+
+
+
+
+        grid_layout.addWidget(self.uiWindow.canvas,1,0)
+
+        grid_layout.addWidget(self.uiWindow.resultBox, 2, 0,6,1)
+        grid_layout.addWidget(self.uiWindow.resultLbl,1,0,alignment=Qt.AlignBottom)
+
+
+        grid_layout.addWidget(self.uiWindow.tableLbl, 0, 1,alignment=Qt.AlignBottom)   
+        grid_layout.addWidget(self.uiWindow.table, 1, 1)   
+        grid_layout.addWidget(self.uiWindow.importDbBtn,2, 1)
+        grid_layout.addWidget(self.uiWindow.plotBtn,3,1)
+        grid_layout.addWidget(self.uiWindow.importModel,4,1)   
+        grid_layout.addWidget(self.uiWindow.exportModel,5,1)
+        grid_layout.addWidget(self.uiWindow.showHistoricalBtn,6,1)
+        grid_layout.addWidget(self.uiWindow.importFileBtn, 7, 1)
+
+        self.show()
 
 
         
-        grid_layout.addWidget(self.importFileBtn, 0, 0)
-        grid_layout.addWidget(self.resultBox,1,0)
-        grid_layout.addWidget(self.table, 0, 1,alignment=Qt.AlignBottom)   
-        grid_layout.addWidget(self.importDbBtn,1, 1,alignment=Qt.AlignTop)
-        grid_layout.addWidget(self.plotBtn,2,1)
-        grid_layout.addWidget(self.importModel,3,1)   
-        grid_layout.addWidget(self.exportModel,4,1)
-        grid_layout.addWidget(self.showHistoricalBtn,5,1)
+
+
+    def startUIToolTab(self,model):
+        self.ToolTab = UIToolTab(self)
+        self.setWindowTitle("UIToolTab")
+        self.setCentralWidget(self.ToolTab)
+        self.ToolTab.CPSBTN.clicked.connect(self.startUIWindow)
+        self.show()
+
+    
+
    
 
 
@@ -402,7 +485,7 @@ class Window(QMainWindow):
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     win = Window()
-    model = Model()
+    win.uiWindow.model = Model()
     win.show()
-    Controller(view=win,model=model)
+    Controller(view=win.uiWindow,model=win.uiWindow.model)
     sys.exit(app.exec_())
