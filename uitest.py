@@ -5,7 +5,7 @@ from PyQt5.QtWidgets import QApplication, QFormLayout, QLineEdit, QTextEdit, QWi
 from PyQt5.QtWidgets import QLabel
 from PyQt5.QtWidgets import QMainWindow
 from PyQt5.QtWidgets import QStatusBar
-from PyQt5.QtWidgets import QToolBar, QVBoxLayout, QPushButton
+from PyQt5.QtWidgets import QToolBar, QVBoxLayout, QPushButton, QListWidget
 from PyQt5.QtWidgets import QTableView, QGridLayout,QStyledItemDelegate, QFileDialog
 from PyQt5.QtCore import QSize, Qt, QVariant
 from PyQt5 import QtGui
@@ -161,8 +161,7 @@ class Model(QtGui.QStandardItemModel):
         
         
 
-    def read_dbfile(self, filename):
-        FullDataset = pd.read_csv(filename)
+    def read_dbfile(self, FullDataset):
         FullDataset = FullDataset.select_dtypes(include="number")
         self.FullDataset = FullDataset
         y = FullDataset.iloc[::,FullDataset.columns == 'тяжестьнаруш'].values
@@ -220,7 +219,7 @@ class Controller:
 
     def _filltable(self,data):
         
-        self._view.model.clear()
+        self._view.uiWindow.model.clear()
         testik = np.empty(0,dtype=str)
 
         for row in data:
@@ -244,35 +243,55 @@ class Controller:
                         item.setForeground(QtGui.QBrush(QtGui.QColor(0, 0, 0)))
                     column = column +1
 
-            self._view.model.appendRow(items)
+            self._view.uiWindow.model.appendRow(items)
         
         self._model.classifier.important_columns = list(set(testik)) if testik.size!=0 else None
-        self._view.model.setHorizontalHeaderLabels(list(self._model.column_names))
-        self._view.table.setModel(self._view.model)
-        delegate = ColorDelegate(self._view.table)
+        self._view.uiWindow.model.setHorizontalHeaderLabels(list(self._model.column_names))
+        self._view.uiWindow.table.setModel(self._view.uiWindow.model)
+        delegate = ColorDelegate(self._view.uiWindow.table)
 
         #for column in range(0,self._view.model.columnCount()):
         #    self._view.table.setItemDelegateForColumn(column,delegate,o)
         #self._model.setData(self._model.index(2,2),QVariant(QtGui.QBrush(QtGui.QColor(218, 94, 242))))
 
-        self._view.table.show()
+        self._view.uiWindow.table.show()
         
         
         
-    def _importDb(self,filename):
-        #fname = QFileDialog.getOpenFileName(None, 'Open file', 
-        # '',"Csv files (*.csv)")
-        #print(fname[0])
-        self._model.read_dbfile(filename)
+    def _createDb(self,dbname):
+        fname = QFileDialog.getOpenFileName(None, 'Open file', 
+         '',"Csv files (*.csv)")
+        print(fname[0])
+        FullDataset = pd.read_csv(fname[0])
+
+        self._model.read_dbfile(FullDataset)
         print(self._model.data)
+
         self._filltable(self._model.data.values)
         client = mong.MongoClient('localhost',27017)
         db = client['CognitiveImpairment']
         df = pd.DataFrame(data=self._model.FullDataset.values,columns=self._model.FullDataset.columns)
-        series_collection = db['CognitiveImpairment']
+        series_collection = db[self._view.uiToolTab.line.text()]
         series_collection.drop()
         test = series_collection.insert_many(df.to_dict('records'))
         print(test)
+        self._view.startUIWindow()
+
+    def _importDb(self,dbname):
+
+
+        client = mong.MongoClient('localhost',27017)
+        dbname = self._view.uiToolTab.db_name
+        db = client['CognitiveImpairment']
+        series_collection = db[dbname]
+        FullDataset = pd.DataFrame(list(series_collection.find()))
+
+        self._model.read_dbfile(FullDataset)
+
+        self._filltable(self._model.data.values)
+
+        print(FullDataset)
+        self._view.startUIWindow()
 
     
     def _importFile(self,filename):
@@ -283,8 +302,8 @@ class Controller:
         ])
         print(self._model.data)
         self._filltable(self._model.data)
-        self._view.resultBox.clear()
-        self._view.resultBox.setText(result_text)
+        self._view.uiWindow.resultBox.clear()
+        self._view.uiWindow.resultBox.setText(result_text)
 
     def _exportModel(self,filename):
         fname = QFileDialog.getSaveFileName(None,'Save file','','Model files (*.pkl)')
@@ -303,8 +322,8 @@ class Controller:
             predictions = objective(np.asarray(forecast),a,b,c,d)
 
 
-            self._view.figure.clear()
-            ax = self._view.figure.add_subplot(111)
+            self._view.uiWindow.figure.clear()
+            ax = self._view.uiWindow.figure.add_subplot(111)
             ax.clear()
             ax.plot(forecast,predictions,'--',markerfacecolor='none',marker='o',color='blue')
             ax.plot(self._model.prediction_array,marker='o',color='blue')
@@ -313,7 +332,7 @@ class Controller:
             ax.plot(self._model.x_line, y_line, '--', color='red')
             
             ax.set_ylim(0,2)
-            self._view.canvas.draw()
+            self._view.uiWindow.canvas.draw()
 
     def _importModel(self):
         fname = QFileDialog.getOpenFileName(None, 'Open file', 
@@ -348,26 +367,29 @@ class Controller:
         plot_points = pca.fit_transform(to_test)
         new_points = pca.fit_transform(self._model.data)
 
-        self._view.figure.clear()
-        ax = self._view.figure.add_subplot(111)
+        self._view.uiWindow.figure.clear()
+        ax = self._view.uiWindow.figure.add_subplot(111)
         ax.clear()
         
         ax.scatter(plot_points[:,0],plot_points[:,1],c=patients_diagnosis)
         ax.scatter(new_points[:,0],new_points[:,1],c='red')
 
-        self._view.canvas.draw()
+        self._view.uiWindow.canvas.draw()
 
         #plt.show()
         print(to_test)
         
 
     def _connectSignals(self):
-        self._view.importFileBtn.clicked.connect(partial(self._importFile,"To_test.csv"))
-        self._view.importDbBtn.clicked.connect(partial(self._importDb,"File2_filter (1).csv"))
-        self._view.plotBtn.clicked.connect(self._plotGraph)
-        self._view.importModel.clicked.connect(self._importModel)
-        self._view.exportModel.clicked.connect(self._exportModel)
-        self._view.showHistoricalBtn.clicked.connect(self._showHistorical)
+        self._view.uiWindow.importFileBtn.clicked.connect(partial(self._importFile,"To_test.csv"))
+        self._view.uiWindow.importDbBtn.clicked.connect(partial(self._importDb,"File2_filter (1).csv"))
+        self._view.uiWindow.plotBtn.clicked.connect(self._plotGraph)
+        self._view.uiWindow.importModel.clicked.connect(self._importModel)
+        self._view.uiWindow.exportModel.clicked.connect(self._exportModel)
+        self._view.uiWindow.showHistoricalBtn.clicked.connect(self._showHistorical)
+        self._view.uiToolTab.CPSBTN.clicked.connect(partial(self._importDb,self._view.uiToolTab.line.text()))
+        self._view.uiToolTab.newDbBtn.clicked.connect(partial(self._createDb,self._view.uiToolTab.line.text()))
+
 
 
 
@@ -411,7 +433,28 @@ class UIWindow(QWidget):
 class UIToolTab(QWidget):
     def __init__(self, parent=None):
         super(UIToolTab, self).__init__(parent)
-        self.CPSBTN = QPushButton("text2", self)
+
+        self.listwidget = QListWidget()
+        self.db_name = None
+
+
+        client = mong.MongoClient('localhost',27017)
+        db = client['CognitiveImpairment']
+        collections_list  = db.collection_names()
+
+        self.line = QLineEdit(self)
+        self.CPSBTN = QPushButton("Выбрать существующую историческую базу", self)
+        self.newDbBtn = QPushButton("Создать новую историческую базу", self)
+
+        self.listwidget = QListWidget()
+        self.listwidget.insertItems(len(collections_list),collections_list)
+        self.listwidget.clicked.connect(self.clicked)
+
+
+    def clicked(self, qmodelindex):
+        self.db_name = self.listwidget.currentItem().text()
+        print(self.db_name)
+
         #self.CPSBTN.move(100, 350)
 
 
@@ -435,25 +478,18 @@ class Window(QMainWindow):
         self.setWindowTitle("UIWindow")
         self.setCentralWidget(self.Window)
  
-       
+        print(self.uiToolTab.line.text())
+
         central_widget = QWidget(self)
         self.setCentralWidget(central_widget)           
              
         grid_layout = QGridLayout()
         central_widget.setLayout(grid_layout)   
 
-       
-        
-
-
-
-
         grid_layout.addWidget(self.uiWindow.canvas,1,0)
 
         grid_layout.addWidget(self.uiWindow.resultBox, 2, 0,6,1)
         grid_layout.addWidget(self.uiWindow.resultLbl,1,0,alignment=Qt.AlignBottom)
-
-
         grid_layout.addWidget(self.uiWindow.tableLbl, 0, 1,alignment=Qt.AlignBottom)   
         grid_layout.addWidget(self.uiWindow.table, 1, 1)   
         grid_layout.addWidget(self.uiWindow.importDbBtn,2, 1)
@@ -465,15 +501,56 @@ class Window(QMainWindow):
 
         self.show()
 
+    def add_db(self):
 
+      client = mong.MongoClient('localhost',27017)
+      db = client['CognitiveImpairment']
+      collections_list  = db.collection_names()
+
+      test_name = self.uiToolTab.line.text()
+
+      if test_name in collections_list:
+        print("The collection exists.")
+      else:
+          print("You can create collection")
+          created_collection  = db[test_name]
+          created_collection.insert_many(data.to_dict('records'))
+          
+    def read_db(self,filename):
+
+       # fname = QFileDialog.getOpenFileName(None, 'Open file', 
+       #  '',"Csv files (*.csv)")
+        #print(fname[0])
+
+        self.uiWindow.model.read_dbfile(filename)
+        #self._model.read_dbfile(filename)
+        print(self._model.data)
+        self._filltable(self._model.data.values)
+        client = mong.MongoClient('localhost',27017)
+        db = client['CognitiveImpairment']
+        df = pd.DataFrame(data=self._model.FullDataset.values,columns=self._model.FullDataset.columns)
+        series_collection = db[filename]
+        series_collection.drop()
+        test = series_collection.insert_many(df.to_dict('records'))
+        print(test)
         
 
 
     def startUIToolTab(self,model):
-        self.ToolTab = UIToolTab(self)
+        self.uiToolTab = UIToolTab(self)
         self.setWindowTitle("UIToolTab")
-        self.setCentralWidget(self.ToolTab)
-        self.ToolTab.CPSBTN.clicked.connect(self.startUIWindow)
+        self.setCentralWidget(self.uiToolTab)
+
+        layout = QGridLayout(self)
+        self.uiToolTab.setLayout(layout)
+        #self.nameLabel = QLabel(self)
+       # self.nameLabel.setText('Name:')
+       
+        layout.addWidget(self.uiToolTab.line)
+        layout.addWidget(self.uiToolTab.listwidget)
+        layout.addWidget(self.uiToolTab.CPSBTN)
+        layout.addWidget(self.uiToolTab.newDbBtn)
+        #self.nameLabel.move(20, 20)
         self.show()
 
     
@@ -487,5 +564,5 @@ if __name__ == '__main__':
     win = Window()
     win.uiWindow.model = Model()
     win.show()
-    Controller(view=win.uiWindow,model=win.uiWindow.model)
+    Controller(view=win,model=win.uiWindow.model)
     sys.exit(app.exec_())
