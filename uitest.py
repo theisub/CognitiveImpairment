@@ -1,6 +1,8 @@
 import sys
 from tkinter.constants import NONE
 
+import matplotlib.patches as mpatches
+from collections import Counter
 from PyQt5.QtWidgets import QApplication, QFormLayout, QLineEdit, QTextEdit, QWidget
 from PyQt5.QtWidgets import QLabel
 from PyQt5.QtWidgets import QMainWindow
@@ -325,6 +327,9 @@ class Controller:
             self._view.uiWindow.figure.clear()
             ax = self._view.uiWindow.figure.add_subplot(111)
             ax.clear()
+            str_month_list = ['Норма','СКН','ЛКН']
+            ax.set_yticks(range(0,3))
+            ax.set_yticklabels(str_month_list)
             ax.plot(forecast,predictions,'--',markerfacecolor='none',marker='o',color='blue')
             ax.plot(self._model.prediction_array,marker='o',color='blue')
             ax.set_xlabel('Номер визита',fontsize=10)
@@ -370,9 +375,27 @@ class Controller:
         self._view.uiWindow.figure.clear()
         ax = self._view.uiWindow.figure.add_subplot(111)
         ax.clear()
+
+        colormap = np.array(['#050EED', '#E09407','#368605'])
+
+        scatter = ax.scatter(plot_points[:,0],plot_points[:,1],c=colormap[patients_diagnosis.astype(int)])
         
-        ax.scatter(plot_points[:,0],plot_points[:,1],c=patients_diagnosis)
-        ax.scatter(new_points[:,0],new_points[:,1],c='red')
+        new_points_ctr = 0
+        if self._model.importances is not None:
+            scatter = ax.scatter(new_points[:,0],new_points[:,1],c='red')
+            new_points_ctr = len(new_points)
+
+
+        pop_norm = mpatches.Patch(color='#050EED', label='Норма ({} объектов)'.format(np.count_nonzero(patients_diagnosis == 0.0)))
+        pop_skn = mpatches.Patch(color='#E09407', label='СКН ({} объектов)'.format(np.count_nonzero(patients_diagnosis == 1.0)))
+        pop_lkn = mpatches.Patch(color='#368605', label='ЛКН ({} объектов)'.format(np.count_nonzero(patients_diagnosis == 2.0)))
+        pop_new = mpatches.Patch(color='red', label='Импортированные данные ({} объектов)'.format(new_points_ctr))
+
+       
+        ax.legend(handles=[pop_norm,pop_skn,pop_lkn,pop_new])
+
+   
+
 
         self._view.uiWindow.canvas.draw()
 
